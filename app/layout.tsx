@@ -18,9 +18,9 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scriptorium — Image to Word Converter",
+  title: "Document OCR — Image to Word Converter",
   description:
-    "Convert handwritten and printed document images into formatted .docx files.",
+    "Convert document images into .docx files.",
   robots: { index: true, follow: true }
 };
 

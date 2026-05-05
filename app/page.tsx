@@ -12,26 +12,7 @@ import {
 
 type AppState = "idle" | "uploading" | "analyzing" | "done" | "error";
 
-interface DocumentBlock {
-  type: "paragraph" | "bullet" | "numbered" | "equation" | "diagram";
-  text: string;
-  indentLevel: number;
-  isBold: boolean;
-  isItalic: boolean;
-}
 
-interface DocumentSection {
-  heading: string;
-  headingLevel: number;
-  headingColor: "red" | "black";
-  content: DocumentBlock[];
-}
-
-interface AnalysisResult {
-  title: string;
-  layout: "single_column" | "two_column";
-  sections: DocumentSection[];
-}
 
 interface SelectedImage {
   dataUrl: string;
@@ -91,24 +72,12 @@ async function extractErrorMessage(response: Response, fallback: string): Promis
   return `${fallback} (HTTP ${response.status})`;
 }
 
-function layoutLabel(layout: AnalysisResult["layout"]): string {
-  return layout === "two_column" ? "Two Column" : "Single Column";
-}
 
-function sectionColorHex(section: DocumentSection): string {
-  return section.headingColor === "red" ? "#c8451a" : "#0a0a0f";
-}
-
-function totalBlocks(analysis: AnalysisResult): number {
-  return analysis.sections.reduce((sum, section) => sum + section.content.length, 0);
-}
 
 export default function HomePage() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [image, setImage] = useState<SelectedImage | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [downloading, setDownloading] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   const defaultRemaining = useMemo<number>(() => {
@@ -127,10 +96,8 @@ export default function HomePage() {
 
   const resetAll = useCallback(() => {
     setImage(null);
-    setAnalysis(null);
     setErrorMessage("");
     setAppState("idle");
-    setDownloading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -156,7 +123,6 @@ export default function HomePage() {
       try {
         const dataUrl = await readFileAsDataUrl(file);
         setImage({ dataUrl, name: file.name, size: file.size, type: file.type });
-        setAnalysis(null);
         setAppState("idle");
       } catch {
         setErrorMessage("Could not read the selected file.");
@@ -201,48 +167,15 @@ export default function HomePage() {
     setAppState("analyzing");
     setErrorMessage("");
     try {
+      const base = image.name.replace(/\.[^.]+$/, "") || "converted_document";
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageDataUrl: image.dataUrl })
+        body: JSON.stringify({ imageDataUrl: image.dataUrl, filename: base })
       });
       setRemaining(parseRemaining(response.headers.get("X-RateLimit-Remaining"), remaining));
       if (!response.ok) {
         const message = await extractErrorMessage(response, "Analysis failed.");
-        console.error("scriptorium.analyze.failed", { status: response.status, message });
-        setErrorMessage(message);
-        setAppState("error");
-        return;
-      }
-      const data = (await response.json()) as { analysis?: AnalysisResult };
-      if (!data.analysis || !Array.isArray(data.analysis.sections)) {
-        setErrorMessage("Received an unexpected response.");
-        setAppState("error");
-        return;
-      }
-      setAnalysis(data.analysis);
-      setAppState("done");
-    } catch {
-      setErrorMessage("Network error. Please check your connection and try again.");
-      setAppState("error");
-    }
-  }, [image, remaining]);
-
-  const download = useCallback(async () => {
-    if (!analysis || !image) return;
-    setDownloading(true);
-    setErrorMessage("");
-    try {
-      const base = image.name.replace(/\.[^.]+$/, "") || "converted_document";
-      const response = await fetch("/api/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysis, filename: base })
-      });
-      setRemaining(parseRemaining(response.headers.get("X-RateLimit-Remaining"), remaining));
-      if (!response.ok) {
-        const message = await extractErrorMessage(response, "Conversion failed.");
-        console.error("scriptorium.convert.failed", { status: response.status, message });
         setErrorMessage(message);
         setAppState("error");
         return;
@@ -259,25 +192,18 @@ export default function HomePage() {
       anchor.click();
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
+      setAppState("idle");
     } catch {
-      setErrorMessage("Network error while downloading. Please try again.");
+      setErrorMessage("Network error. Please check your connection and try again.");
       setAppState("error");
-    } finally {
-      setDownloading(false);
     }
-  }, [analysis, image, remaining]);
-
-  const analyzeAgain = useCallback(() => {
-    setAnalysis(null);
-    setErrorMessage("");
-    setAppState("idle");
-  }, []);
+  }, [image, remaining]);
 
   const renderHeader = () => (
     <header className="w-full border-b border-paper-line">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-baseline gap-4">
-          <span className="font-display text-[28px] leading-none">Scriptorium</span>
+          <span className="font-display text-[28px] leading-none">Document OCR</span>
           <span className="text-[11px] uppercase tracking-[0.16em] text-muted-ink">
             Image to Word Converter
           </span>
@@ -374,68 +300,7 @@ export default function HomePage() {
     </div>
   );
 
-  const renderDone = () => {
-    if (!analysis || !image) return null;
-    return (
-      <div className="mx-auto grid min-h-[calc(100vh-88px)] max-w-6xl grid-cols-1 gap-8 px-6 py-10 lg:grid-cols-[1fr_1fr]">
-        <div className="flex flex-col gap-4">{renderImageCard()}</div>
-        <div className="results-panel rounded-sm p-6">
-          <div className="flex items-center justify-between">
-            <span className="badge">{layoutLabel(analysis.layout)}</span>
-            <span className="text-[11px] text-muted-ink">
-              {analysis.sections.length} sections · {totalBlocks(analysis)} blocks
-            </span>
-          </div>
-          {analysis.title ? (
-            <h2 className="font-display mt-4 text-[20px] leading-tight">{analysis.title}</h2>
-          ) : (
-            <p className="mt-4 text-[12px] text-muted-ink">No title detected</p>
-          )}
-          <div className="mt-5 space-y-2 border-t border-paper-line pt-4">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-muted-ink">Sections</p>
-            <ul className="space-y-2">
-              {analysis.sections.map((section, index) => (
-                <li
-                  key={`${index}-${section.heading}`}
-                  className="flex items-center gap-3 text-[12px]"
-                >
-                  <span
-                    className="color-square"
-                    style={{ backgroundColor: sectionColorHex(section) }}
-                    aria-hidden="true"
-                  />
-                  <span className="text-muted-ink">H{section.headingLevel}</span>
-                  <span className="truncate">
-                    {section.heading || <em className="text-muted-ink">untitled section</em>}
-                  </span>
-                  <span className="ml-auto text-[11px] text-muted-ink">
-                    {section.content.length}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="mt-6 flex flex-col gap-3">
-            <button
-              type="button"
-              className="btn-primary flex w-full items-center justify-center gap-3"
-              onClick={download}
-              disabled={downloading}
-            >
-              {downloading ? <span className="spinner spinner-sm" aria-hidden="true" /> : null}
-              {downloading ? "Preparing..." : "Download .docx"}
-            </button>
-            <button type="button" className="btn-ghost w-full" onClick={analyzeAgain}>
-              Analyze Again
-            </button>
-            <button type="button" className="btn-link" onClick={resetAll}>
-              Upload New Image
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+
 
   const renderError = () => (
     <div className="mx-auto flex min-h-[calc(100vh-88px)] max-w-2xl flex-col items-center justify-center gap-5 px-6 py-12">
@@ -447,7 +312,7 @@ export default function HomePage() {
         <button
           type="button"
           className="btn-primary w-full"
-          onClick={image && analysis ? download : image ? analyze : openFileDialog}
+          onClick={image ? analyze : openFileDialog}
         >
           Try Again
         </button>
@@ -462,8 +327,7 @@ export default function HomePage() {
     switch (appState) {
       case "analyzing":
         return renderAnalyzing();
-      case "done":
-        return renderDone();
+
       case "error":
         return renderError();
       case "uploading":
