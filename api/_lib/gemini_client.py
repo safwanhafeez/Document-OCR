@@ -7,7 +7,7 @@ from typing import Optional
 from google import genai
 from google.genai import types as genai_types
 
-DEFAULT_MODEL = "gemini-2.5-pro"
+DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
 
 _client: Optional[genai.Client] = None
 
