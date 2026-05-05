@@ -65,12 +65,17 @@ def assert_request(
             return (413, "Request body too large.", {})
 
     if os.environ.get("VERCEL_ENV") == "production" or os.environ.get("NODE_ENV") == "production":
-        vercel_host = _normalize_vercel_host(os.environ.get("VERCEL_URL", ""))
-        if vercel_host:
-            origin_host = _extract_host(handler.headers.get("Origin"))
-            referer_host = _extract_host(handler.headers.get("Referer"))
-            presented = origin_host or referer_host
-            if not presented or presented != vercel_host:
+        origin_host = _extract_host(handler.headers.get("Origin"))
+        referer_host = _extract_host(handler.headers.get("Referer"))
+        presented = origin_host or referer_host
+        
+        if presented:
+            vercel_host = _normalize_vercel_host(os.environ.get("VERCEL_URL", ""))
+            is_vercel_subdomain = presented.endswith(".vercel.app")
+            is_exact_match = vercel_host and presented == vercel_host
+            is_local = presented in ("localhost", "127.0.0.1")
+            
+            if not (is_vercel_subdomain or is_exact_match or is_local):
                 return (403, "Forbidden origin.", {})
 
     return None
