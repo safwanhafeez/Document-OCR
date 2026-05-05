@@ -1,4 +1,5 @@
 {
+  "outputDirectory": ".next",
   "functions": {
     "api/analyze.py": { "maxDuration": 60, "memory": 1024 },
     "api/convert.py": { "maxDuration": 30, "memory": 1024 }
