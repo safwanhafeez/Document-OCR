@@ -75,7 +75,7 @@ class handler(BaseHTTPRequestHandler):
                 base64_image=str(validation["base64"]),
                 mime_type=str(validation["mime_type"]),
             )
-            filename = sanitized.get("filename", "converted_document")
+            filename = body.get("filename", "converted_document")
             import re
             filename = re.sub(r"[^A-Za-z0-9_]", "", filename)[:100] or "converted_document"
 
